@@ -11,6 +11,29 @@ inline static bool NBLIsizeInvalid (uint32_t height, uint32_t width) {
 }
 
 
+template<bool IS_RGB, typename CODEC_T>
+inline static uint16_t *NBLIcompressWrapper (uint16_t *p_buf, uint16_t *p_buf_end, uint8_t *p_img, uint32_t height, uint32_t width, int16_t near, bool &use_avp) {
+    if (!use_avp) {
+        return     NBLIcodec<true, IS_RGB,false, CODEC_T> (p_buf, p_buf_end, p_img, height, width, near);
+    } else if (near != 0) {
+        return     NBLIcodec<true, IS_RGB, true, CODEC_T> (p_buf, p_buf_end, p_img, height, width, near);
+    } else {
+        size_t len1, len2;
+        uint16_t *p1, *p2;
+        p1 =       NBLIcodec<true, IS_RGB,false, CODEC_T> (p_buf, p_buf_end, p_img, height, width, near);
+        p2 =       NBLIcodec<true, IS_RGB, true, CODEC_T> (p_buf, p_buf_end, p_img, height, width, near);
+        len1 = p1 - p_buf;
+        len2 = p2 - p_buf;
+        use_avp = (len1 > (len2+(len2>>9)+8));
+        if (use_avp) {
+            return p2;
+        } else {
+            return NBLIcodec<true, IS_RGB,false, CODEC_T> (p_buf, p_buf_end, p_img, height, width, near);
+        }
+    }
+}
+
+
 // return : non-NULL : pointer to compressed data
 //              NULL : failed
 uint8_t *NBLIcompress (size_t &comp_size, uint8_t *p_img, bool is_rgb, uint32_t height, uint32_t width, bool use_golomb, bool use_avp, int16_t &near, uint32_t &crc32) {
@@ -28,38 +51,22 @@ uint8_t *NBLIcompress (size_t &comp_size, uint8_t *p_img, bool is_rgb, uint32_t 
     
     if (is_rgb) {
         if (use_golomb) {
-            if (use_avp) {
-                p_buf = NBLIcodec<true, true, true,            GolombCodeTree<true, 3, N_QD>> (p_buf, p_buf_end, p_img, height, width, near);
-            } else {
-                p_buf = NBLIcodec<true, true,false,            GolombCodeTree<true, 3, N_QD>> (p_buf, p_buf_end, p_img, height, width, near);
-            }
+            p_buf = NBLIcompressWrapper<true,             GolombCodeTree<true, 3, N_QD>> (p_buf, p_buf_end, p_img, height, width, near, use_avp);
         } else {
-            if (use_avp) {
-                p_buf = NBLIcodec<true, true, true, rANSwithGlobalHistogram<true, 3*N_QD, 9>> (p_buf, p_buf_end, p_img, height, width, near);
-            } else {
-                p_buf = NBLIcodec<true, true,false, rANSwithGlobalHistogram<true, 3*N_QD, 9>> (p_buf, p_buf_end, p_img, height, width, near);
-            }
+            p_buf = NBLIcompressWrapper<true,  rANSwithGlobalHistogram<true, 3*N_QD, 9>> (p_buf, p_buf_end, p_img, height, width, near, use_avp);
         }
     } else {
         if (use_golomb) {
-            if (use_avp) {
-                p_buf = NBLIcodec<false,true, true,            GolombCodeTree<true, 1, N_QD>> (p_buf, p_buf_end, p_img, height, width, near);
-            } else {
-                p_buf = NBLIcodec<false,true,false,            GolombCodeTree<true, 1, N_QD>> (p_buf, p_buf_end, p_img, height, width, near);
-            }
+            p_buf = NBLIcompressWrapper<false,            GolombCodeTree<true, 1, N_QD>> (p_buf, p_buf_end, p_img, height, width, near, use_avp);
         } else {
-            if (use_avp) {
-                p_buf = NBLIcodec<false,true, true,   rANSwithGlobalHistogram<true, N_QD, 8>> (p_buf, p_buf_end, p_img, height, width, near);
-            } else {
-                p_buf = NBLIcodec<false,true,false,   rANSwithGlobalHistogram<true, N_QD, 8>> (p_buf, p_buf_end, p_img, height, width, near);
-            }
+            p_buf = NBLIcompressWrapper<false,   rANSwithGlobalHistogram<true, N_QD, 8>> (p_buf, p_buf_end, p_img, height, width, near, use_avp);
         }
     }
     
-    if (crc32) {
+    if (crc32)
         crc32 = calculateCRC32(p_img, img_size);
-        writeHeader(p_buf_base, height, width, is_rgb, use_golomb, use_avp, near, crc32);
-    }
+    
+    writeHeader(p_buf_base, height, width, is_rgb, use_golomb, use_avp, near, crc32);
     
     comp_size = 2 * (p_buf - p_buf_base);
     
@@ -87,15 +94,15 @@ uint8_t *NBLIdecompress (uint8_t *p_buf, bool &is_rgb, uint32_t &height, uint32_
     if (is_rgb) {
         if (use_golomb) {
             if (use_avp) {
-                NBLIcodec<true, false, true,            GolombCodeTree<false, 3, N_QD>> (p_u16, NULL, p_img, height, width, near);
+                NBLIcodec<false, true, true,            GolombCodeTree<false, 3, N_QD>> (p_u16, NULL, p_img, height, width, near);
             } else {
-                NBLIcodec<true, false,false,            GolombCodeTree<false, 3, N_QD>> (p_u16, NULL, p_img, height, width, near);
+                NBLIcodec<false, true,false,            GolombCodeTree<false, 3, N_QD>> (p_u16, NULL, p_img, height, width, near);
             }
         } else {
             if (use_avp) {
-                NBLIcodec<true, false, true, rANSwithGlobalHistogram<false, 3*N_QD, 9>> (p_u16, NULL, p_img, height, width, near);
+                NBLIcodec<false, true, true, rANSwithGlobalHistogram<false, 3*N_QD, 9>> (p_u16, NULL, p_img, height, width, near);
             } else {
-                NBLIcodec<true, false,false, rANSwithGlobalHistogram<false, 3*N_QD, 9>> (p_u16, NULL, p_img, height, width, near);
+                NBLIcodec<false, true,false, rANSwithGlobalHistogram<false, 3*N_QD, 9>> (p_u16, NULL, p_img, height, width, near);
             }
         }
     } else {

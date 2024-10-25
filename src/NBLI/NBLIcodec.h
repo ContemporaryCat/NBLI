@@ -57,7 +57,7 @@ inline static void store_YUV_with_map (uint8_t *p_RGB, int16_t Y, int16_t U, int
 }
 
 
-template<bool IS_RGB, bool IS_ENC, bool USE_AVP, typename CODEC_T>
+template<bool IS_ENC, bool IS_RGB, bool USE_AVP, typename CODEC_T>
 inline static uint16_t *NBLIcodec (uint16_t *p_buf, uint16_t *p_buf_end, uint8_t *p_img, uint32_t height, uint32_t width, int16_t near) {
     
     int16_t mU=MAX_UV, mV=MAX_UV;
